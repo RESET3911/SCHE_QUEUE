@@ -135,10 +135,11 @@ export default function SettingsScreen({ settings, onChange, onBack }: Props) {
         <section className="mt-3 rounded-xl border border-board-line bg-board-panel p-4">
           <h2 className="text-sm font-bold">カレンダー紐付け</h2>
           <p className="mt-1 text-xs text-board-dim">
-            サブカテゴリの「登録先」に応じて、ここで選んだカレンダーに予定が入ります。
+            「ファミリー」は必須。すべてここに登録する場合は「自分用」は空欄のままでOKです
+            （自分用を設定しない場合、サブカテゴリの登録先設定に関わらず全てファミリーに登録されます）。
           </p>
-          {calendarSelect('自分用', settings.selfCalendarId, (id) => onChange({ ...settings, selfCalendarId: id }))}
           {calendarSelect('ファミリー', settings.familyCalendarId, (id) => onChange({ ...settings, familyCalendarId: id }))}
+          {calendarSelect('自分用（任意）', settings.selfCalendarId, (id) => onChange({ ...settings, selfCalendarId: id }))}
           {!authed && <p className="mt-2 text-xs text-board-dim">※ カレンダー一覧の取得にはGoogle接続が必要です</p>}
         </section>
 

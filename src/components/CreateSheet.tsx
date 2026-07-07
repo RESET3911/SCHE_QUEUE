@@ -1,6 +1,6 @@
 import type { Draft, SubCategory, CalendarTarget } from '../types';
 import { CATEGORIES, COLOR_HEX } from '../data/defaults';
-import { fmtReminder, fmtTime } from '../lib/format';
+import { fmtDateShort, fmtReminder, fmtTime } from '../lib/format';
 
 // 予定作成シート。タイムラインで枠をドラッグ調整できるよう、バックドロップなしの
 // 非モーダル構成にしている（シート表示中もタイムラインは操作可能）。
@@ -12,6 +12,7 @@ interface Props {
   subCategories: SubCategory[];
   title: string;
   target: CalendarTarget;
+  hasSelfCalendar: boolean;
   enabledReminders: number[];
   hasOverlap: boolean;
   canSave: boolean;
@@ -34,6 +35,7 @@ export default function CreateSheet(p: Props) {
       {/* ヘッダー：時刻表示 */}
       <div className="flex items-center justify-between px-4 pt-3">
         <div className="font-mono text-lg font-semibold tracking-wide text-board-amber">
+          <span className="mr-2 text-sm text-board-text">{fmtDateShort(p.draft.day)}</span>
           {fmtTime(p.draft.startMin)}
           <span className="mx-1 text-board-dim">–</span>
           {fmtTime(p.draft.endMin)}
@@ -111,23 +113,25 @@ export default function CreateSheet(p: Props) {
           />
         </div>
 
-        {/* 共有範囲 */}
-        <div className="mt-3 flex items-center gap-3">
-          <span className="w-14 text-xs text-board-dim">登録先</span>
-          <div className="flex overflow-hidden rounded-md border border-board-line font-mono text-sm">
-            {(['self', 'family'] as const).map((t) => (
-              <button
-                key={t}
-                onClick={() => p.onTargetChange(t)}
-                className={`px-3 py-1.5 transition-colors ${
-                  p.target === t ? 'bg-board-amber font-bold text-board-base' : 'text-board-dim'
-                }`}
-              >
-                {t === 'self' ? '自分用' : 'ファミリー'}
-              </button>
-            ))}
+        {/* 共有範囲（自分用カレンダー未設定なら全てファミリーに登録されるため非表示） */}
+        {p.hasSelfCalendar && (
+          <div className="mt-3 flex items-center gap-3">
+            <span className="w-14 text-xs text-board-dim">登録先</span>
+            <div className="flex overflow-hidden rounded-md border border-board-line font-mono text-sm">
+              {(['self', 'family'] as const).map((t) => (
+                <button
+                  key={t}
+                  onClick={() => p.onTargetChange(t)}
+                  className={`px-3 py-1.5 transition-colors ${
+                    p.target === t ? 'bg-board-amber font-bold text-board-base' : 'text-board-dim'
+                  }`}
+                >
+                  {t === 'self' ? '自分用' : 'ファミリー'}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* 通知 */}
         <div className="mt-3 flex items-start gap-3">

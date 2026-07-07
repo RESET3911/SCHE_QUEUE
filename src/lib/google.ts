@@ -109,6 +109,17 @@ export async function listCalendars(token: string): Promise<GCalendar[]> {
   return (data.items ?? []).map((c) => ({ id: c.id, summary: c.summary, primary: c.primary }));
 }
 
+// タイムライン表示用：登録先に関わらず、ユーザーが自分のGoogleカレンダーで
+// 表示チェックを入れている全カレンダーの予定を拾う（既存の予定を見えるようにするため）
+export async function listViewableCalendars(token: string): Promise<GCalendar[]> {
+  const data = await api<{
+    items?: { id: string; summary: string; primary?: boolean; selected?: boolean; hidden?: boolean; backgroundColor?: string }[];
+  }>(token, '/users/me/calendarList?maxResults=250');
+  return (data.items ?? [])
+    .filter((c) => c.selected !== false && !c.hidden)
+    .map((c) => ({ id: c.id, summary: c.summary, primary: c.primary, backgroundColor: c.backgroundColor }));
+}
+
 interface RawEvent {
   id: string;
   summary?: string;

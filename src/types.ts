@@ -28,6 +28,7 @@ export interface GCalendar {
   id: string;
   summary: string;
   primary?: boolean;
+  backgroundColor?: string; // Googleカレンダー側で割り当てられたカレンダー自体の色
 }
 
 export interface GEvent {
@@ -38,10 +39,12 @@ export interface GEvent {
   end: Date;
   colorId?: string;
   allDay: boolean;
+  calendarHex?: string; // colorId未設定イベント用のフォールバック色（カレンダー既定色）
 }
 
-// 選択中の日の 0:00 からの経過分で予定枠を表す
+// 対象日の 0:00 からの経過分で予定枠を表す
 export interface Draft {
+  day: Date; // dayStart（週表示のどの列に属するか）
   startMin: number;
   endMin: number;
   origin: 'timeline' | 'category';

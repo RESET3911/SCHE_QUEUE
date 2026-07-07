@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { CalendarTarget, Draft, GEvent, Settings, SubCategory } from '../types';
 import { CATEGORIES, COLOR_HEX } from '../data/defaults';
-import { addDays, dayStart, fmtDate, isSameDay } from '../lib/format';
-import { connect, deleteEvent, getValidToken, insertEvent, listEvents } from '../lib/google';
+import { addDays, fmtDateShort, fmtWeekRange, isSameDay, startOfWeek } from '../lib/format';
+import { connect, deleteEvent, getValidToken, insertEvent, listEvents, listViewableCalendars } from '../lib/google';
 import Timeline from '../components/Timeline';
 import CreateSheet from '../components/CreateSheet';
 import Snackbar, { type SnackState } from '../components/Snackbar';
@@ -13,7 +13,8 @@ interface Props {
 }
 
 export default function HomeScreen({ settings, onOpenSettings }: Props) {
-  const [date, setDate] = useState(() => dayStart(new Date()));
+  const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()));
+  const days = useMemo(() => Array.from({ length: 7 }, (_, i) => addDays(weekStart, i)), [weekStart]);
   const [events, setEvents] = useState<GEvent[]>([]);
   const [authed, setAuthed] = useState(() => !!getValidToken());
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -29,7 +30,21 @@ export default function HomeScreen({ settings, onOpenSettings }: Props) {
   const [snack, setSnack] = useState<SnackState | null>(null);
 
   const configured = !!settings.clientId;
-  const calendarsMapped = !!settings.selfCalendarId && !!settings.familyCalendarId;
+  // ファミリーカレンダーのみ必須。自分用は任意（未設定なら全部ファミリーに登録される）
+  const calendarsMapped = !!settings.familyCalendarId;
+  const hasSelfCalendar = !!settings.selfCalendarId;
+
+  const resolveCalendarId = useCallback(
+    (t: CalendarTarget) => (t === 'self' && settings.selfCalendarId ? settings.selfCalendarId : settings.familyCalendarId),
+    [settings.selfCalendarId, settings.familyCalendarId],
+  );
+
+  // 週が変わったら作成中の予定はリセット（別の週の日付を参照し続けるのを防ぐ）
+  useEffect(() => {
+    setDraft(null);
+    setSubCategory(null);
+    setTitle('');
+  }, [weekStart]);
 
   const loadEvents = useCallback(async () => {
     const token = getValidToken();
@@ -39,16 +54,21 @@ export default function HomeScreen({ settings, onOpenSettings }: Props) {
     }
     setAuthed(true);
     setLoadError(null);
-    const from = dayStart(date);
-    const to = addDays(from, 1);
-    const calIds = [...new Set([settings.selfCalendarId, settings.familyCalendarId].filter(Boolean))];
+    const from = weekStart;
+    const to = addDays(weekStart, 7);
     try {
+      const cals = await listViewableCalendars(token);
+      const colorMap: Record<string, string> = {};
+      cals.forEach((c) => {
+        if (c.backgroundColor) colorMap[c.id] = c.backgroundColor;
+      });
+      const calIds = cals.length > 0 ? cals.map((c) => c.id) : [settings.selfCalendarId, settings.familyCalendarId].filter(Boolean);
       const results = await Promise.all(calIds.map((id) => listEvents(token, id, from, to)));
-      setEvents(results.flat());
+      setEvents(results.flat().map((e) => ({ ...e, calendarHex: colorMap[e.calendarId] })));
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : '予定の取得に失敗しました');
     }
-  }, [date, settings.selfCalendarId, settings.familyCalendarId]);
+  }, [weekStart, settings.selfCalendarId, settings.familyCalendarId]);
 
   useEffect(() => {
     void loadEvents();
@@ -74,48 +94,53 @@ export default function HomeScreen({ settings, onOpenSettings }: Props) {
   };
 
   // タイムライン空き枠のタップ/長押し。作成中はその枠の移動として扱う
-  const handleSlot = (startMin: number, durMin: number) => {
+  const handleSlot = (day: Date, startMin: number, durMin: number) => {
     if (draft) {
       const dur = draft.endMin - draft.startMin;
       const s = Math.min(startMin, 1440 - dur);
-      setDraft({ ...draft, startMin: s, endMin: s + dur });
+      setDraft({ ...draft, day, startMin: s, endMin: s + dur });
       return;
     }
-    setDraft({ startMin, endMin: Math.min(startMin + durMin, 1440), origin: 'timeline' });
+    setDraft({ day, startMin, endMin: Math.min(startMin + durMin, 1440), origin: 'timeline' });
   };
 
-  // 大カテゴリボタン：直近の30分区切りに枠を作ってシートを開く
+  // 大カテゴリボタン：今日が表示週内ならその直近30分区切り、それ以外は週の月曜9時に枠を作る
   const handleCategoryButton = (catId: string) => {
     setCategoryId(catId);
     setSubCategory(null);
     if (!draft) {
       const now = new Date();
+      const todayIdx = days.findIndex((d) => isSameDay(d, now));
+      let day: Date;
       let startMin: number;
-      if (isSameDay(date, now)) {
+      if (todayIdx >= 0) {
+        day = days[todayIdx];
         startMin = Math.min(Math.ceil((now.getHours() * 60 + now.getMinutes()) / 30) * 30, 1440 - 30);
       } else {
+        day = weekStart;
         startMin = 9 * 60;
       }
-      setDraft({ startMin, endMin: startMin + 30, origin: 'category' });
+      setDraft({ day, startMin, endMin: startMin + 30, origin: 'category' });
     }
   };
 
   const hasOverlap = useMemo(() => {
     if (!draft) return false;
-    const base = dayStart(date).getTime();
+    const base = draft.day.getTime();
     return timedEvents.some((ev) => {
+      if (!isSameDay(ev.start, draft.day)) return false;
       const s = (ev.start.getTime() - base) / 60_000;
       const e = (ev.end.getTime() - base) / 60_000;
       return s < draft.endMin && e > draft.startMin;
     });
-  }, [draft, timedEvents, date]);
+  }, [draft, timedEvents]);
 
   const saveDisabledReason = !configured
     ? '設定でGoogleクライアントIDを設定してください'
     : !authed
       ? 'Googleに接続すると登録できます'
       : !calendarsMapped
-        ? '設定でカレンダーを紐付けてください'
+        ? '設定でファミリーカレンダーを紐付けてください'
         : !subCategory
           ? 'サブカテゴリを選択してください'
           : null;
@@ -135,8 +160,8 @@ export default function HomeScreen({ settings, onOpenSettings }: Props) {
     setBusy(true);
     try {
       const token = getValidToken() ?? (await connect(settings.clientId));
-      const calendarId = target === 'family' ? settings.familyCalendarId : settings.selfCalendarId;
-      const base = dayStart(date);
+      const calendarId = resolveCalendarId(target);
+      const base = draft.day;
       const start = new Date(base.getTime() + draft.startMin * 60_000);
       const end = new Date(base.getTime() + draft.endMin * 60_000);
       const summary = title.trim()
@@ -180,7 +205,7 @@ export default function HomeScreen({ settings, onOpenSettings }: Props) {
   };
 
   const draftHex = subCategory ? COLOR_HEX[subCategory.colorId] : '#ffb52e';
-  const today = isSameDay(date, new Date());
+  const thisWeek = todayInWeek(days);
 
   return (
     <div className="mx-auto flex h-full max-w-xl flex-col">
@@ -198,18 +223,18 @@ export default function HomeScreen({ settings, onOpenSettings }: Props) {
         </button>
       </header>
 
-      {/* 日付ナビ */}
+      {/* 週ナビ */}
       <div className="flex items-center justify-between px-4 py-1.5">
-        <button onClick={() => setDate((d) => addDays(d, -1))} className="rounded-md px-3 py-1 text-lg text-board-dim hover:bg-board-raise">‹</button>
+        <button onClick={() => setWeekStart((w) => addDays(w, -7))} className="rounded-md px-3 py-1 text-lg text-board-dim hover:bg-board-raise">‹</button>
         <div className="flex items-baseline gap-2">
-          <span className="font-mono text-lg font-semibold">{fmtDate(date)}</span>
-          {!today && (
-            <button onClick={() => setDate(dayStart(new Date()))} className="rounded border border-board-line px-2 py-0.5 text-xs text-board-amber">
-              今日
+          <span className="font-mono text-base font-semibold">{fmtWeekRange(weekStart)}</span>
+          {!thisWeek && (
+            <button onClick={() => setWeekStart(startOfWeek(new Date()))} className="rounded border border-board-line px-2 py-0.5 text-xs text-board-amber">
+              今週
             </button>
           )}
         </div>
-        <button onClick={() => setDate((d) => addDays(d, 1))} className="rounded-md px-3 py-1 text-lg text-board-dim hover:bg-board-raise">›</button>
+        <button onClick={() => setWeekStart((w) => addDays(w, 7))} className="rounded-md px-3 py-1 text-lg text-board-dim hover:bg-board-raise">›</button>
       </div>
 
       {/* 大カテゴリ6ボタン */}
@@ -243,7 +268,7 @@ export default function HomeScreen({ settings, onOpenSettings }: Props) {
       )}
       {configured && !authed && (
         <button onClick={() => void handleReconnect()} className="mx-4 mb-2 rounded-md border border-board-amber/40 bg-board-amber/10 px-3 py-2 text-left text-xs text-board-amber">
-          ⚡ Googleに接続して今日の予定を表示（タップ）
+          ⚡ Googleに接続して今週の予定を表示（タップ）
         </button>
       )}
       {loadError && <p className="mx-4 mb-2 text-xs text-red-400">{loadError}</p>}
@@ -252,10 +277,10 @@ export default function HomeScreen({ settings, onOpenSettings }: Props) {
       {allDayEvents.length > 0 && (
         <div className="flex gap-1.5 overflow-x-auto px-4 pb-1.5">
           {allDayEvents.map((ev) => {
-            const hex = (ev.colorId && COLOR_HEX[ev.colorId]) || '#8b98a9';
+            const hex = (ev.colorId && COLOR_HEX[ev.colorId]) || ev.calendarHex || '#8b98a9';
             return (
               <span key={`${ev.calendarId}:${ev.id}`} className="shrink-0 rounded px-2 py-0.5 text-xs" style={{ background: `${hex}26`, color: hex, filter: 'brightness(1.4)' }}>
-                {ev.title}
+                {fmtDateShort(ev.start)} {ev.title}
               </span>
             );
           })}
@@ -265,7 +290,7 @@ export default function HomeScreen({ settings, onOpenSettings }: Props) {
       {/* タイムライン */}
       <div className="relative mx-2 flex min-h-0 flex-1 flex-col overflow-hidden rounded-t-xl border border-board-line bg-board-panel/40">
         <Timeline
-          date={date}
+          days={days}
           events={timedEvents}
           draft={draft}
           draftHex={draftHex}
@@ -285,6 +310,7 @@ export default function HomeScreen({ settings, onOpenSettings }: Props) {
           subCategories={settings.subCategories}
           title={title}
           target={target}
+          hasSelfCalendar={hasSelfCalendar}
           enabledReminders={enabledReminders}
           hasOverlap={hasOverlap}
           canSave={!saveDisabledReason}
@@ -308,4 +334,9 @@ export default function HomeScreen({ settings, onOpenSettings }: Props) {
       {snack && <Snackbar snack={snack} onDismiss={() => setSnack(null)} />}
     </div>
   );
+}
+
+function todayInWeek(days: Date[]) {
+  const now = new Date();
+  return days.some((d) => isSameDay(d, now));
 }

@@ -26,3 +26,20 @@ export const addDays = (d: Date, n: number) => {
   x.setDate(x.getDate() + n);
   return x;
 };
+
+// 月曜始まりの週の開始日（Monday）を返す
+export const startOfWeek = (d: Date) => {
+  const ds = dayStart(d);
+  const diff = (ds.getDay() + 6) % 7; // 月=0, 火=1, ... 日=6
+  return addDays(ds, -diff);
+};
+
+export const fmtDateShort = (d: Date) => `${d.getMonth() + 1}/${d.getDate()}（${WEEKDAYS[d.getDay()]}）`;
+
+export const fmtWeekRange = (weekStart: Date) => {
+  const end = addDays(weekStart, 6);
+  const sameMonth = weekStart.getMonth() === end.getMonth();
+  return sameMonth
+    ? `${weekStart.getMonth() + 1}月${weekStart.getDate()}日–${end.getDate()}日`
+    : `${weekStart.getMonth() + 1}月${weekStart.getDate()}日–${end.getMonth() + 1}月${end.getDate()}日`;
+};
