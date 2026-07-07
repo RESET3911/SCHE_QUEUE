@@ -193,6 +193,33 @@ export async function insertEvent(
   });
 }
 
+export interface EventPatch {
+  summary?: string;
+  start?: Date;
+  end?: Date;
+  colorId?: string;
+  allDay?: boolean;
+}
+
+const toDateStr = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+
+export async function updateEvent(
+  token: string,
+  calendarId: string,
+  eventId: string,
+  patch: EventPatch,
+): Promise<{ id: string }> {
+  const body: Record<string, unknown> = {};
+  if (patch.summary !== undefined) body.summary = patch.summary;
+  if (patch.start) body.start = patch.allDay ? { date: toDateStr(patch.start) } : { dateTime: patch.start.toISOString() };
+  if (patch.end) body.end = patch.allDay ? { date: toDateStr(patch.end) } : { dateTime: patch.end.toISOString() };
+  if (patch.colorId !== undefined) body.colorId = patch.colorId;
+  return api<{ id: string }>(token, `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`, {
+    method: 'PATCH',
+    body: JSON.stringify(body),
+  });
+}
+
 export async function deleteEvent(token: string, calendarId: string, eventId: string): Promise<void> {
   await api<void>(
     token,

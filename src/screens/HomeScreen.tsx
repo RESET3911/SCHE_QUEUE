@@ -2,10 +2,10 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { CalendarTarget, Draft, GEvent, Settings, SubCategory } from '../types';
 import { CATEGORIES, COLOR_HEX } from '../data/defaults';
 import { addDays, fmtDateShort, fmtWeekRange, isSameDay, startOfWeek } from '../lib/format';
-import { connect, deleteEvent, getValidToken, insertEvent, listEvents, listViewableCalendars } from '../lib/google';
+import { connect, deleteEvent, getValidToken, insertEvent, listEvents, listViewableCalendars, updateEvent } from '../lib/google';
 import Timeline from '../components/Timeline';
 import CreateSheet from '../components/CreateSheet';
-import EventDetailPanel from '../components/EventDetailPanel';
+import EventDetailPanel, { type EventUpdate } from '../components/EventDetailPanel';
 import Snackbar, { type SnackState } from '../components/Snackbar';
 
 interface Props {
@@ -33,6 +33,7 @@ export default function HomeScreen({ settings, onOpenSettings }: Props) {
   // 既存予定の詳細パネル
   const [selectedEvent, setSelectedEvent] = useState<GEvent | null>(null);
   const [deletingSelected, setDeletingSelected] = useState(false);
+  const [updatingSelected, setUpdatingSelected] = useState(false);
 
   const configured = !!settings.clientId;
   // ファミリーカレンダーのみ必須。自分用は任意（未設定なら全部ファミリーに登録される）
@@ -228,6 +229,37 @@ export default function HomeScreen({ settings, onOpenSettings }: Props) {
     }
   };
 
+  const handleUpdateSelected = async (update: EventUpdate): Promise<boolean> => {
+    if (!selectedEvent) return false;
+    setUpdatingSelected(true);
+    try {
+      const token = getValidToken() ?? (await connect(settings.clientId));
+      await updateEvent(token, selectedEvent.calendarId, selectedEvent.id, {
+        summary: update.title,
+        start: update.start,
+        end: update.end,
+        colorId: update.colorId,
+        allDay: update.allDay,
+      });
+      const updated: GEvent = {
+        ...selectedEvent,
+        title: update.title,
+        start: update.start,
+        end: update.end,
+        ...(update.colorId !== undefined ? { colorId: update.colorId } : {}),
+      };
+      setEvents((prev) => prev.map((e) => (e.id === selectedEvent.id && e.calendarId === selectedEvent.calendarId ? updated : e)));
+      setSelectedEvent(updated);
+      setSnack({ message: '更新しました' });
+      return true;
+    } catch (e) {
+      setSnack({ message: e instanceof Error ? e.message : '更新に失敗しました' });
+      return false;
+    } finally {
+      setUpdatingSelected(false);
+    }
+  };
+
   const draftHex = subCategory ? COLOR_HEX[subCategory.colorId] : '#a8570d';
   const thisWeek = todayInWeek(days);
 
@@ -367,6 +399,8 @@ export default function HomeScreen({ settings, onOpenSettings }: Props) {
           onClose={() => setSelectedEvent(null)}
           onDelete={() => void handleDeleteSelected()}
           deleting={deletingSelected}
+          onUpdate={handleUpdateSelected}
+          saving={updatingSelected}
         />
       )}
 
