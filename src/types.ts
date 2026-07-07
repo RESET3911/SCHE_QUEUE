@@ -40,6 +40,7 @@ export interface GEvent {
   colorId?: string;
   allDay: boolean;
   calendarHex?: string; // colorId未設定イベント用のフォールバック色（カレンダー既定色）
+  calendarName?: string; // 詳細パネル表示用のカレンダー名
 }
 
 // 対象日の 0:00 からの経過分で予定枠を表す

@@ -5,6 +5,7 @@ import { addDays, fmtDateShort, fmtWeekRange, isSameDay, startOfWeek } from '../
 import { connect, deleteEvent, getValidToken, insertEvent, listEvents, listViewableCalendars } from '../lib/google';
 import Timeline from '../components/Timeline';
 import CreateSheet from '../components/CreateSheet';
+import EventDetailPanel from '../components/EventDetailPanel';
 import Snackbar, { type SnackState } from '../components/Snackbar';
 
 interface Props {
@@ -28,6 +29,10 @@ export default function HomeScreen({ settings, onOpenSettings }: Props) {
   const [enabledReminders, setEnabledReminders] = useState<number[]>([]);
   const [busy, setBusy] = useState(false);
   const [snack, setSnack] = useState<SnackState | null>(null);
+
+  // 既存予定の詳細パネル
+  const [selectedEvent, setSelectedEvent] = useState<GEvent | null>(null);
+  const [deletingSelected, setDeletingSelected] = useState(false);
 
   const configured = !!settings.clientId;
   // ファミリーカレンダーのみ必須。自分用は任意（未設定なら全部ファミリーに登録される）
@@ -59,12 +64,14 @@ export default function HomeScreen({ settings, onOpenSettings }: Props) {
     try {
       const cals = await listViewableCalendars(token);
       const colorMap: Record<string, string> = {};
+      const nameMap: Record<string, string> = {};
       cals.forEach((c) => {
         if (c.backgroundColor) colorMap[c.id] = c.backgroundColor;
+        nameMap[c.id] = c.summary;
       });
       const calIds = cals.length > 0 ? cals.map((c) => c.id) : [settings.selfCalendarId, settings.familyCalendarId].filter(Boolean);
       const results = await Promise.all(calIds.map((id) => listEvents(token, id, from, to)));
-      setEvents(results.flat().map((e) => ({ ...e, calendarHex: colorMap[e.calendarId] })));
+      setEvents(results.flat().map((e) => ({ ...e, calendarHex: colorMap[e.calendarId], calendarName: nameMap[e.calendarId] })));
     } catch (e) {
       setLoadError(e instanceof Error ? e.message : '予定の取得に失敗しました');
     }
@@ -204,19 +211,36 @@ export default function HomeScreen({ settings, onOpenSettings }: Props) {
     }
   };
 
-  const draftHex = subCategory ? COLOR_HEX[subCategory.colorId] : '#ffb52e';
+  const handleDeleteSelected = async () => {
+    if (!selectedEvent) return;
+    if (!window.confirm(`「${selectedEvent.title}」を削除しますか？`)) return;
+    setDeletingSelected(true);
+    try {
+      const token = getValidToken() ?? (await connect(settings.clientId));
+      await deleteEvent(token, selectedEvent.calendarId, selectedEvent.id);
+      setEvents((prev) => prev.filter((e) => !(e.id === selectedEvent.id && e.calendarId === selectedEvent.calendarId)));
+      setSelectedEvent(null);
+      setSnack({ message: '削除しました' });
+    } catch (e) {
+      setSnack({ message: e instanceof Error ? e.message : '削除に失敗しました' });
+    } finally {
+      setDeletingSelected(false);
+    }
+  };
+
+  const draftHex = subCategory ? COLOR_HEX[subCategory.colorId] : '#a8570d';
   const thisWeek = todayInWeek(days);
 
   return (
-    <div className="mx-auto flex h-full max-w-xl flex-col">
+    <div className="mx-auto flex w-full flex-col px-4 sm:px-6 lg:px-10">
       {/* ヘッダー：発車標風ワードマーク */}
-      <header className="flex items-center justify-between pb-1 pl-[76px] pr-4 pt-3">
-        <h1 className="font-mono text-sm font-bold tracking-[0.3em] text-board-amber">
+      <header className="flex items-center justify-between pb-1 pl-[64px] pt-3">
+        <h1 className="font-mono text-base font-bold tracking-[0.3em] text-board-amber">
           SCHE<span className="text-board-dim">/</span>QUEUE
         </h1>
         <button
           onClick={onOpenSettings}
-          className="rounded-md px-2 py-1 text-sm text-board-dim hover:bg-board-raise"
+          className="rounded-md px-2.5 py-1.5 text-sm text-board-dim hover:bg-board-raise"
           aria-label="設定"
         >
           ⚙ 設定
@@ -224,26 +248,26 @@ export default function HomeScreen({ settings, onOpenSettings }: Props) {
       </header>
 
       {/* 週ナビ */}
-      <div className="flex items-center justify-between px-4 py-1.5">
-        <button onClick={() => setWeekStart((w) => addDays(w, -7))} className="rounded-md px-3 py-1 text-lg text-board-dim hover:bg-board-raise">‹</button>
+      <div className="flex items-center justify-between py-2">
+        <button onClick={() => setWeekStart((w) => addDays(w, -7))} className="rounded-md px-3 py-1.5 text-xl text-board-dim hover:bg-board-raise">‹</button>
         <div className="flex items-baseline gap-2">
-          <span className="font-mono text-base font-semibold">{fmtWeekRange(weekStart)}</span>
+          <span className="font-mono text-lg font-semibold">{fmtWeekRange(weekStart)}</span>
           {!thisWeek && (
-            <button onClick={() => setWeekStart(startOfWeek(new Date()))} className="rounded border border-board-line px-2 py-0.5 text-xs text-board-amber">
+            <button onClick={() => setWeekStart(startOfWeek(new Date()))} className="rounded border border-board-line px-2.5 py-1 text-sm text-board-amber">
               今週
             </button>
           )}
         </div>
-        <button onClick={() => setWeekStart((w) => addDays(w, 7))} className="rounded-md px-3 py-1 text-lg text-board-dim hover:bg-board-raise">›</button>
+        <button onClick={() => setWeekStart((w) => addDays(w, 7))} className="rounded-md px-3 py-1.5 text-xl text-board-dim hover:bg-board-raise">›</button>
       </div>
 
       {/* 大カテゴリ6ボタン */}
-      <div className="grid grid-cols-6 gap-1.5 px-4 pb-2">
+      <div className="grid grid-cols-3 gap-2 pb-2 sm:grid-cols-6">
         {CATEGORIES.map((c) => (
           <button
             key={c.id}
             onClick={() => handleCategoryButton(c.id)}
-            className="rounded-lg py-2 text-center text-[13px] font-bold leading-none transition-transform active:scale-95"
+            className="rounded-lg py-2.5 text-center text-sm font-bold leading-none transition-transform active:scale-95"
             style={{ background: `${c.badge}1f`, color: c.badge, border: `1px solid ${c.badge}55` }}
           >
             ＋{c.label}
@@ -252,43 +276,48 @@ export default function HomeScreen({ settings, onOpenSettings }: Props) {
       </div>
 
       {/* クイック入力（v1.1予定） */}
-      <div className="px-4 pb-2">
+      <div className="pb-2">
         <input
           disabled
           placeholder="クイック入力（v1.1 で対応予定）"
-          className="w-full rounded-lg border border-board-line bg-board-panel/60 px-3 py-2 text-sm placeholder:text-board-dim/50"
+          className="w-full rounded-lg border border-board-line bg-board-panel/60 px-3 py-2.5 text-sm placeholder:text-board-dim/60"
         />
       </div>
 
       {/* 接続状態バナー */}
       {!configured && (
-        <button onClick={onOpenSettings} className="mx-4 mb-2 rounded-md border border-board-amber/40 bg-board-amber/10 px-3 py-2 text-left text-xs text-board-amber">
+        <button onClick={onOpenSettings} className="mb-2 rounded-md border border-board-amber/40 bg-board-amber/10 px-3 py-2.5 text-left text-sm text-board-amber">
           初回設定：GoogleクライアントIDとカレンダーの紐付けが必要です → 設定を開く
         </button>
       )}
       {configured && !authed && (
-        <button onClick={() => void handleReconnect()} className="mx-4 mb-2 rounded-md border border-board-amber/40 bg-board-amber/10 px-3 py-2 text-left text-xs text-board-amber">
+        <button onClick={() => void handleReconnect()} className="mb-2 rounded-md border border-board-amber/40 bg-board-amber/10 px-3 py-2.5 text-left text-sm text-board-amber">
           ⚡ Googleに接続して今週の予定を表示（タップ）
         </button>
       )}
-      {loadError && <p className="mx-4 mb-2 text-xs text-red-400">{loadError}</p>}
+      {loadError && <p className="mb-2 text-sm text-red-600">{loadError}</p>}
 
       {/* 終日予定 */}
       {allDayEvents.length > 0 && (
-        <div className="flex gap-1.5 overflow-x-auto px-4 pb-1.5">
+        <div className="flex flex-wrap gap-1.5 pb-2">
           {allDayEvents.map((ev) => {
-            const hex = (ev.colorId && COLOR_HEX[ev.colorId]) || ev.calendarHex || '#8b98a9';
+            const hex = (ev.colorId && COLOR_HEX[ev.colorId]) || ev.calendarHex || '#6b6a63';
             return (
-              <span key={`${ev.calendarId}:${ev.id}`} className="shrink-0 rounded px-2 py-0.5 text-xs" style={{ background: `${hex}26`, color: hex, filter: 'brightness(1.4)' }}>
+              <button
+                key={`${ev.calendarId}:${ev.id}`}
+                onClick={() => setSelectedEvent(ev)}
+                className="shrink-0 rounded px-2.5 py-1 text-sm"
+                style={{ background: `${hex}1f`, color: hex, filter: 'brightness(0.85)' }}
+              >
                 {fmtDateShort(ev.start)} {ev.title}
-              </span>
+              </button>
             );
           })}
         </div>
       )}
 
       {/* タイムライン */}
-      <div className="relative mx-2 flex min-h-0 flex-1 flex-col overflow-hidden rounded-t-xl border border-board-line bg-board-panel/40">
+      <div className="relative overflow-hidden rounded-t-xl border border-board-line bg-board-panel/60">
         <Timeline
           days={days}
           events={timedEvents}
@@ -297,10 +326,11 @@ export default function HomeScreen({ settings, onOpenSettings }: Props) {
           draftLabel={subCategory ? subCategory.prefix || subCategory.name : '新規'}
           onSlot={handleSlot}
           onDraftChange={setDraft}
+          onEventClick={setSelectedEvent}
         />
-        {/* シート分の余白確保 */}
-        {draft && <div className="h-[52dvh] shrink-0 md:h-[40dvh]" />}
       </div>
+      {/* シート分の余白確保（作成シートが画面下を覆っても続きが見えるように） */}
+      {draft && <div style={{ height: '55dvh' }} />}
 
       {draft && (
         <CreateSheet
@@ -328,6 +358,15 @@ export default function HomeScreen({ settings, onOpenSettings }: Props) {
           }
           onSave={() => void handleSave()}
           onClose={resetSheet}
+        />
+      )}
+
+      {selectedEvent && (
+        <EventDetailPanel
+          event={selectedEvent}
+          onClose={() => setSelectedEvent(null)}
+          onDelete={() => void handleDeleteSelected()}
+          deleting={deletingSelected}
         />
       )}
 

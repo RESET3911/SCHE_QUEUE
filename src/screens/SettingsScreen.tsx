@@ -91,17 +91,17 @@ export default function SettingsScreen({ settings, onChange, onBack }: Props) {
   );
 
   return (
-    <div className="mx-auto flex h-full max-w-xl flex-col">
-      <header className="flex items-center gap-2 pb-2 pl-[76px] pr-4 pt-3">
-        <button onClick={onBack} className="rounded-md px-2 py-1 text-board-dim hover:bg-board-raise">‹ 戻る</button>
-        <h1 className="font-mono text-sm font-bold tracking-[0.2em] text-board-amber">設定</h1>
+    <div className="mx-auto flex w-full flex-col px-4 sm:px-6 lg:px-10">
+      <header className="flex items-center gap-2 pb-2 pl-[64px] pt-3">
+        <button onClick={onBack} className="rounded-md px-2.5 py-1.5 text-sm text-board-dim hover:bg-board-raise">‹ 戻る</button>
+        <h1 className="font-mono text-base font-bold tracking-[0.2em] text-board-amber">設定</h1>
       </header>
 
-      <div className="flex-1 overflow-y-auto px-4 pb-8">
+      <div className="max-w-2xl pb-10">
         {/* Google接続 */}
         <section className="rounded-xl border border-board-line bg-board-panel p-4">
-          <h2 className="text-sm font-bold">Google接続</h2>
-          <p className="mt-1 text-xs leading-relaxed text-board-dim">
+          <h2 className="text-base font-bold">Google接続</h2>
+          <p className="mt-1 text-sm leading-relaxed text-board-dim">
             Google Cloud Console で OAuth クライアントID（ウェブアプリ）を作成し、
             「承認済みの JavaScript 生成元」にこのアプリのURL（開発時は http://localhost:5173）を追加。
             Google Calendar API を有効化してから、下にクライアントIDを貼り付けてください。
@@ -110,7 +110,7 @@ export default function SettingsScreen({ settings, onChange, onBack }: Props) {
             value={clientIdInput}
             onChange={(e) => setClientIdInput(e.target.value)}
             placeholder="xxxxx.apps.googleusercontent.com"
-            className="mt-2 w-full rounded-md border border-board-line bg-board-base px-2.5 py-2 font-mono text-xs placeholder:text-board-dim/50"
+            className="mt-2 w-full rounded-md border border-board-line bg-board-base px-2.5 py-2 font-mono text-sm placeholder:text-board-dim/60"
           />
           <div className="mt-2 flex items-center gap-2">
             <button
@@ -121,37 +121,37 @@ export default function SettingsScreen({ settings, onChange, onBack }: Props) {
             </button>
             {authed && (
               <>
-                <span className="text-xs text-emerald-400">● 接続済み</span>
-                <button onClick={handleDisconnect} className="ml-auto text-xs text-board-dim underline">
+                <span className="text-sm text-emerald-700">● 接続済み</span>
+                <button onClick={handleDisconnect} className="ml-auto text-sm text-board-dim underline">
                   切断
                 </button>
               </>
             )}
           </div>
-          {error && <p className="mt-2 text-xs text-red-400">{error}</p>}
+          {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
         </section>
 
         {/* カレンダー紐付け */}
         <section className="mt-3 rounded-xl border border-board-line bg-board-panel p-4">
-          <h2 className="text-sm font-bold">カレンダー紐付け</h2>
-          <p className="mt-1 text-xs text-board-dim">
+          <h2 className="text-base font-bold">カレンダー紐付け</h2>
+          <p className="mt-1 text-sm text-board-dim">
             「ファミリー」は必須。すべてここに登録する場合は「自分用」は空欄のままでOKです
             （自分用を設定しない場合、サブカテゴリの登録先設定に関わらず全てファミリーに登録されます）。
           </p>
           {calendarSelect('ファミリー', settings.familyCalendarId, (id) => onChange({ ...settings, familyCalendarId: id }))}
           {calendarSelect('自分用（任意）', settings.selfCalendarId, (id) => onChange({ ...settings, selfCalendarId: id }))}
-          {!authed && <p className="mt-2 text-xs text-board-dim">※ カレンダー一覧の取得にはGoogle接続が必要です</p>}
+          {!authed && <p className="mt-2 text-sm text-board-dim">※ カレンダー一覧の取得にはGoogle接続が必要です</p>}
         </section>
 
         {/* サブカテゴリ管理 */}
         <section className="mt-3 rounded-xl border border-board-line bg-board-panel p-4">
-          <h2 className="text-sm font-bold">サブカテゴリ</h2>
+          <h2 className="text-base font-bold">サブカテゴリ</h2>
           {CATEGORIES.map((cat) => {
             const subs = settings.subCategories.filter((s) => s.categoryId === cat.id);
             return (
               <div key={cat.id} className="mt-3">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold" style={{ color: cat.badge }}>＋{cat.label}</span>
+                  <span className="text-sm font-bold" style={{ color: cat.badge }}>＋{cat.label}</span>
                   <button
                     onClick={() => {
                       setIsNew(true);
@@ -166,7 +166,7 @@ export default function SettingsScreen({ settings, onChange, onBack }: Props) {
                         defaultDurationMin: 60,
                       });
                     }}
-                    className="text-xs text-board-amber"
+                    className="text-sm text-board-amber"
                   >
                     ＋追加
                   </button>
@@ -183,14 +183,14 @@ export default function SettingsScreen({ settings, onChange, onBack }: Props) {
                     >
                       <span className="h-3 w-3 shrink-0 rounded-sm" style={{ background: COLOR_HEX[s.colorId] }} />
                       <span className="font-medium">{s.name}</span>
-                      {s.prefix && <span className="text-xs text-board-dim">{s.prefix}</span>}
-                      <span className="ml-auto font-mono text-[10px] text-board-dim">
+                      {s.prefix && <span className="text-sm text-board-dim">{s.prefix}</span>}
+                      <span className="ml-auto font-mono text-xs text-board-dim">
                         {s.target === 'family' ? 'ファミリー' : '自分用'}・{s.defaultDurationMin}分・
                         {s.reminders.map(fmtReminder).join('/')}
                       </span>
                     </button>
                   ))}
-                  {subs.length === 0 && <p className="text-xs text-board-dim">なし</p>}
+                  {subs.length === 0 && <p className="text-sm text-board-dim">なし</p>}
                 </div>
               </div>
             );
@@ -201,7 +201,7 @@ export default function SettingsScreen({ settings, onChange, onBack }: Props) {
                 onChange({ ...settings, subCategories: DEFAULT_SUBCATEGORIES });
               }
             }}
-            className="mt-4 text-xs text-board-dim underline"
+            className="mt-4 text-sm text-board-dim underline"
           >
             サブカテゴリを初期設定に戻す
           </button>
@@ -280,7 +280,7 @@ function SubCategoryEditor({
               key={c.id}
               onClick={() => set('colorId', c.id)}
               title={c.label}
-              className={`h-8 w-8 rounded-md transition-transform ${draft.colorId === c.id ? 'scale-110 ring-2 ring-white' : 'opacity-70'}`}
+              className={`h-8 w-8 rounded-md transition-transform ${draft.colorId === c.id ? 'scale-110 ring-2 ring-board-text ring-offset-2 ring-offset-board-panel' : 'opacity-70'}`}
               style={{ background: COLOR_HEX[c.id] }}
             />
           ))}
@@ -348,7 +348,7 @@ function SubCategoryEditor({
         {!isNew && (
           <button
             onClick={() => window.confirm(`「${sub.name}」を削除しますか？`) && onDelete(sub.id)}
-            className="rounded-lg border border-red-500/40 px-4 py-2.5 text-sm text-red-400"
+            className="rounded-lg border border-red-300 bg-red-50 px-4 py-2.5 text-sm font-bold text-red-600"
           >
             削除
           </button>

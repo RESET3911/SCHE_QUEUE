@@ -19,7 +19,7 @@ export default function Snackbar({ snack, onDismiss, durationMs = 6000 }: Props)
   }, [snack, onDismiss, durationMs]);
 
   return (
-    <div className="animate-snack-in fixed inset-x-0 bottom-4 z-50 mx-auto flex w-[calc(100%-2rem)] max-w-md items-center justify-between rounded-lg border border-board-line bg-board-raise px-4 py-3 shadow-xl shadow-black/60">
+    <div className="animate-snack-in fixed inset-x-0 bottom-4 z-50 mx-auto flex w-[calc(100%-2rem)] max-w-md items-center justify-between rounded-lg border border-board-line bg-board-panel px-4 py-3 shadow-xl shadow-black/20">
       <span className="text-sm">{snack.message}</span>
       {snack.actionLabel && snack.onAction && (
         <button

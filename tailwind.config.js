@@ -5,13 +5,13 @@ export default {
     extend: {
       colors: {
         board: {
-          base: '#0c0f14',
-          panel: '#141922',
-          raise: '#1b2230',
-          line: 'rgba(148, 163, 184, 0.14)',
-          text: '#e7edf5',
-          dim: '#8b98a9',
-          amber: '#ffb52e',
+          base: '#f2f2ee',
+          panel: '#ffffff',
+          raise: '#ecece6',
+          line: 'rgba(30, 27, 20, 0.13)',
+          text: '#1c1b18',
+          dim: '#6b6a63',
+          amber: '#a8570d',
         },
       },
       fontFamily: {

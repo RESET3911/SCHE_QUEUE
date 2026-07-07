@@ -31,7 +31,7 @@ export default function CreateSheet(p: Props) {
   const subs = p.subCategories.filter((s) => s.categoryId === p.categoryId);
 
   return (
-    <div className="animate-sheet-up fixed inset-x-0 bottom-0 z-40 mx-auto max-w-xl rounded-t-2xl border-t border-x border-board-line bg-board-panel shadow-[0_-12px_40px_rgba(0,0,0,0.6)]">
+    <div className="animate-sheet-up fixed inset-x-0 bottom-0 z-40 mx-auto w-full max-w-2xl rounded-t-2xl border-t border-x border-board-line bg-board-panel shadow-[0_-12px_40px_rgba(0,0,0,0.18)]">
       {/* ヘッダー：時刻表示 */}
       <div className="flex items-center justify-between px-4 pt-3">
         <div className="font-mono text-lg font-semibold tracking-wide text-board-amber">
@@ -39,7 +39,7 @@ export default function CreateSheet(p: Props) {
           {fmtTime(p.draft.startMin)}
           <span className="mx-1 text-board-dim">–</span>
           {fmtTime(p.draft.endMin)}
-          <span className="ml-2 text-xs font-normal text-board-dim">枠はドラッグで調整</span>
+          <span className="ml-2 text-sm font-normal text-board-dim">枠はドラッグで調整</span>
         </div>
         <button
           onClick={p.onClose}
@@ -62,8 +62,8 @@ export default function CreateSheet(p: Props) {
                 className="shrink-0 rounded-md px-2.5 py-1.5 text-sm font-bold transition-colors"
                 style={
                   active
-                    ? { background: c.badge, color: '#0c0f14' }
-                    : { background: '#1b2230', color: c.badge }
+                    ? { background: c.badge, color: '#1c1b18' }
+                    : { background: '#ecece6', color: c.badge }
                 }
               >
                 ＋{c.label}
@@ -75,7 +75,7 @@ export default function CreateSheet(p: Props) {
         {/* サブカテゴリ */}
         <div className="mt-2 flex flex-wrap gap-1.5">
           {subs.length === 0 && (
-            <p className="text-xs text-board-dim">このカテゴリにサブカテゴリがありません（設定から追加できます）</p>
+            <p className="text-sm text-board-dim">このカテゴリにサブカテゴリがありません（設定から追加できます）</p>
           )}
           {subs.map((s) => {
             const active = p.subCategory?.id === s.id;
@@ -87,8 +87,8 @@ export default function CreateSheet(p: Props) {
                 className="rounded-full border px-3 py-1 text-sm transition-colors"
                 style={
                   active
-                    ? { borderColor: hex, background: `${hex}33`, color: '#fff', fontWeight: 700 }
-                    : { borderColor: 'rgba(148,163,184,0.25)', color: '#c6cfdb' }
+                    ? { borderColor: hex, background: `${hex}26`, color: '#1c1b18', fontWeight: 700 }
+                    : { borderColor: 'rgba(30,27,20,0.18)', color: '#4b4a45' }
                 }
               >
                 <span className="mr-1 inline-block h-2 w-2 rounded-sm" style={{ background: hex }} />
@@ -101,7 +101,7 @@ export default function CreateSheet(p: Props) {
         {/* タイトル */}
         <div className="mt-3 flex items-center gap-1.5 rounded-lg border border-board-line bg-board-base px-2.5 py-2">
           {p.subCategory?.prefix && (
-            <span className="shrink-0 rounded bg-board-raise px-1.5 py-0.5 text-xs font-bold text-board-amber">
+            <span className="shrink-0 rounded bg-board-raise px-1.5 py-0.5 text-sm font-bold text-board-amber">
               {p.subCategory.prefix}
             </span>
           )}
@@ -116,7 +116,7 @@ export default function CreateSheet(p: Props) {
         {/* 共有範囲（自分用カレンダー未設定なら全てファミリーに登録されるため非表示） */}
         {p.hasSelfCalendar && (
           <div className="mt-3 flex items-center gap-3">
-            <span className="w-14 text-xs text-board-dim">登録先</span>
+            <span className="w-14 text-sm text-board-dim">登録先</span>
             <div className="flex overflow-hidden rounded-md border border-board-line font-mono text-sm">
               {(['self', 'family'] as const).map((t) => (
                 <button
@@ -135,7 +135,7 @@ export default function CreateSheet(p: Props) {
 
         {/* 通知 */}
         <div className="mt-3 flex items-start gap-3">
-          <span className="mt-1 w-14 shrink-0 text-xs text-board-dim">通知</span>
+          <span className="mt-1 w-14 shrink-0 text-sm text-board-dim">通知</span>
           <div className="flex flex-wrap gap-1.5">
             {(p.subCategory?.reminders ?? []).map((m) => {
               const on = p.enabledReminders.includes(m);
@@ -143,7 +143,7 @@ export default function CreateSheet(p: Props) {
                 <button
                   key={m}
                   onClick={() => p.onToggleReminder(m)}
-                  className={`rounded-full border px-2.5 py-0.5 text-xs transition-colors ${
+                  className={`rounded-full border px-2.5 py-0.5 text-sm transition-colors ${
                     on
                       ? 'border-board-amber/60 bg-board-amber/15 text-board-amber'
                       : 'border-board-line text-board-dim line-through'
@@ -153,19 +153,19 @@ export default function CreateSheet(p: Props) {
                 </button>
               );
             })}
-            {!p.subCategory && <span className="text-xs text-board-dim">サブカテゴリを選択</span>}
+            {!p.subCategory && <span className="text-sm text-board-dim">サブカテゴリを選択</span>}
           </div>
         </div>
 
         {/* 重複警告 */}
         {p.hasOverlap && (
-          <p className="mt-3 rounded-md border border-board-amber/40 bg-board-amber/10 px-3 py-1.5 text-xs text-board-amber">
+          <p className="mt-3 rounded-md border border-board-amber/40 bg-board-amber/10 px-3 py-1.5 text-sm text-board-amber">
             ⚠ 既存の予定と重複しています
           </p>
         )}
 
         {p.saveDisabledReason && (
-          <p className="mt-3 text-xs text-board-dim">{p.saveDisabledReason}</p>
+          <p className="mt-3 text-sm text-board-dim">{p.saveDisabledReason}</p>
         )}
 
         {/* 保存 */}

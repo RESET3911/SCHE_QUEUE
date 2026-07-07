@@ -4,9 +4,9 @@ import { COLOR_HEX, DEFAULT_EVENT_HEX } from '../data/defaults';
 import { WEEKDAYS, fmtTime, isSameDay, pad2 } from '../lib/format';
 import { layoutColumns } from '../lib/layout';
 
-const HOUR_H = 44; // px per hour（週表示は7列なので日表示より詰める）
+const HOUR_H = 64; // px per hour
 const GRID_H = 24 * HOUR_H;
-const LABEL_W = 40; // 時刻ラベル列の幅(px)
+const LABEL_W = 52; // 時刻ラベル列の幅(px)
 const LONG_PRESS_MS = 450;
 const DAY_COUNT = 7;
 
@@ -31,10 +31,11 @@ interface Props {
   draftLabel: string;
   onSlot: (day: Date, startMin: number, durMin: number) => void;
   onDraftChange: (d: Draft) => void;
+  onEventClick: (ev: GEvent) => void;
 }
 
-export default function Timeline({ days, events, draft, draftHex, draftLabel, onSlot, onDraftChange }: Props) {
-  const scrollRef = useRef<HTMLDivElement>(null);
+export default function Timeline({ days, events, draft, draftHex, draftLabel, onSlot, onDraftChange, onEventClick }: Props) {
+  const gridRef = useRef<HTMLDivElement>(null);
   const columnsRef = useRef<HTMLDivElement>(null);
   const [nowMin, setNowMin] = useState(() => new Date().getHours() * 60 + new Date().getMinutes());
 
@@ -53,11 +54,13 @@ export default function Timeline({ days, events, draft, draftHex, draftLabel, on
 
   const todayIdx = useMemo(() => days.findIndex((d) => isSameDay(d, new Date())), [days]);
 
+  // 週が変わったら現在時刻付近までページをスクロールする
   useEffect(() => {
-    const el = scrollRef.current;
+    const el = gridRef.current;
     if (!el) return;
     const target = todayIdx >= 0 ? clamp(nowMin - 90, 0, 1440) : 7 * 60;
-    el.scrollTop = minToPx(target);
+    const top = el.getBoundingClientRect().top + window.scrollY + minToPx(target) - 90;
+    window.scrollTo({ top: Math.max(top, 0), behavior: 'auto' });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [days[0]?.getTime()]);
 
@@ -170,17 +173,17 @@ export default function Timeline({ days, events, draft, draftHex, draftLabel, on
   );
 
   return (
-    <div className="flex h-full flex-col">
-      {/* 曜日ヘッダー（固定） */}
-      <div className="flex border-b border-board-line" style={{ paddingLeft: LABEL_W }}>
+    <div className="flex flex-col board-texture">
+      {/* 曜日ヘッダー（スクロールしても上部に固定） */}
+      <div className="sticky top-0 z-10 flex border-b border-board-line bg-board-panel" style={{ paddingLeft: LABEL_W }}>
         {days.map((day, idx) => {
           const isToday = idx === todayIdx;
           return (
-            <div key={idx} className={`flex-1 border-l border-board-line py-1 text-center ${isToday ? 'bg-board-amber/10' : ''}`}>
-              <div className={`font-mono text-[10px] ${idx === 5 ? 'text-sky-400' : idx === 6 ? 'text-rose-400' : 'text-board-dim'}`}>
+            <div key={idx} className={`flex-1 border-l border-board-line py-1.5 text-center ${isToday ? 'bg-board-amber/10' : ''}`}>
+              <div className={`font-mono text-xs ${idx === 5 ? 'text-sky-600' : idx === 6 ? 'text-rose-600' : 'text-board-dim'}`}>
                 {WEEKDAYS[day.getDay()]}
               </div>
-              <div className={`font-mono text-sm font-bold leading-tight ${isToday ? 'text-board-amber' : 'text-board-text'}`}>
+              <div className={`font-mono text-lg font-bold leading-tight ${isToday ? 'text-board-amber' : 'text-board-text'}`}>
                 {day.getDate()}
               </div>
             </div>
@@ -188,111 +191,113 @@ export default function Timeline({ days, events, draft, draftHex, draftLabel, on
         })}
       </div>
 
-      <div ref={scrollRef} className="flex-1 overflow-y-auto board-texture" style={{ overscrollBehavior: 'contain' }}>
-        <div className="relative flex" style={{ height: GRID_H }}>
-          {/* 時刻ラベル列 */}
-          <div className="relative shrink-0" style={{ width: LABEL_W }}>
-            {Array.from({ length: 24 }, (_, h) => (
-              <span key={h} className="absolute -top-2 left-1 font-mono text-[10px] text-board-dim" style={{ top: h * HOUR_H }}>
-                {pad2(h)}
-              </span>
-            ))}
-          </div>
+      <div ref={gridRef} className="relative flex" style={{ height: GRID_H }}>
+        {/* 時刻ラベル列 */}
+        <div className="relative shrink-0" style={{ width: LABEL_W }}>
+          {Array.from({ length: 24 }, (_, h) => (
+            <span key={h} className="absolute -top-2.5 left-1.5 font-mono text-xs text-board-dim" style={{ top: h * HOUR_H }}>
+              {pad2(h)}:00
+            </span>
+          ))}
+        </div>
 
-          {/* 日カラム */}
-          <div ref={columnsRef} className="relative flex flex-1 touch-pan-y select-none">
-            {/* 時間の水平線（全列共通） */}
+        {/* 日カラム */}
+        <div ref={columnsRef} className="relative flex flex-1 touch-pan-y select-none">
+          {/* 時間の水平線（全列共通） */}
+          <div
+            className="pointer-events-none absolute inset-0"
+            style={{
+              backgroundImage: `repeating-linear-gradient(180deg, transparent 0, transparent ${HOUR_H - 1}px, rgba(30,27,20,0.13) ${HOUR_H - 1}px, rgba(30,27,20,0.13) ${HOUR_H}px)`,
+            }}
+          />
+
+          {days.map((_day, dayIdx) => (
             <div
-              className="pointer-events-none absolute inset-0"
-              style={{
-                backgroundImage: `repeating-linear-gradient(180deg, transparent 0, transparent ${HOUR_H - 1}px, rgba(148,163,184,0.14) ${HOUR_H - 1}px, rgba(148,163,184,0.14) ${HOUR_H}px)`,
-              }}
-            />
-
-            {days.map((_day, dayIdx) => (
-              <div
-                key={dayIdx}
-                className="relative flex-1 border-l border-board-line"
-                onPointerDown={columnPointerDown(dayIdx)}
-                onPointerMove={columnPointerMove}
-                onPointerUp={columnPointerUp(dayIdx)}
-                onPointerCancel={columnPointerCancel}
-                onPointerLeave={cancelPress}
-              >
-                {eventsByDay[dayIdx].map((it) => {
-                  const top = minToPx(it.start);
-                  const height = Math.max(minToPx(it.end - it.start), 16);
-                  const widthPct = 100 / it.cols;
-                  const leftPct = (it.col * 100) / it.cols;
-                  if (it.isDraft && draft) {
-                    return (
-                      <div
-                        key={it.key}
-                        className="pointer-events-auto absolute z-20 cursor-grab touch-none rounded-md border-2 border-dashed shadow-lg shadow-black/50"
-                        style={{
-                          top,
-                          height,
-                          left: `calc(${leftPct}% + 1px)`,
-                          width: `calc(${widthPct}% - 2px)`,
-                          borderColor: draftHex,
-                          background: `${draftHex}33`,
-                        }}
-                        onPointerDown={startDraftDrag('move')}
-                        onPointerMove={onDraftPointerMove}
-                        onPointerUp={onDraftPointerUp}
-                        onPointerCancel={onDraftPointerUp}
-                      >
-                        <div className="flex h-full flex-col overflow-hidden px-1 py-0.5">
-                          <div className="truncate text-[10px] font-bold leading-tight" style={{ color: '#fff' }}>
-                            <span className="font-mono">{fmtTime(draft.startMin)}</span>
-                            {draftLabel && <span className="ml-1">{draftLabel}</span>}
-                          </div>
-                        </div>
-                        <div
-                          className="absolute inset-x-0 -bottom-2.5 flex h-5 cursor-ns-resize touch-none items-center justify-center"
-                          onPointerDown={startDraftDrag('resize')}
-                          onPointerMove={onDraftPointerMove}
-                          onPointerUp={onDraftPointerUp}
-                          onPointerCancel={onDraftPointerUp}
-                        >
-                          <div className="h-1.5 w-6 rounded-full border" style={{ borderColor: draftHex, background: '#0c0f14' }} />
-                        </div>
-                      </div>
-                    );
-                  }
-                  const ev = it.event!;
-                  const hex = (ev.colorId && COLOR_HEX[ev.colorId]) || ev.calendarHex || DEFAULT_EVENT_HEX;
+              key={dayIdx}
+              className="relative flex-1 border-l border-board-line"
+              onPointerDown={columnPointerDown(dayIdx)}
+              onPointerMove={columnPointerMove}
+              onPointerUp={columnPointerUp(dayIdx)}
+              onPointerCancel={columnPointerCancel}
+              onPointerLeave={cancelPress}
+            >
+              {eventsByDay[dayIdx].map((it) => {
+                const top = minToPx(it.start);
+                const height = Math.max(minToPx(it.end - it.start), 20);
+                const widthPct = 100 / it.cols;
+                const leftPct = (it.col * 100) / it.cols;
+                if (it.isDraft && draft) {
                   return (
                     <div
                       key={it.key}
-                      className="absolute overflow-hidden rounded-sm"
+                      className="pointer-events-auto absolute z-20 cursor-grab touch-none rounded-md border-2 border-dashed shadow-lg shadow-black/20"
                       style={{
                         top,
                         height,
                         left: `calc(${leftPct}% + 1px)`,
                         width: `calc(${widthPct}% - 2px)`,
-                        background: `${hex}26`,
-                        borderLeft: `2px solid ${hex}`,
+                        borderColor: draftHex,
+                        background: `${draftHex}26`,
                       }}
+                      onPointerDown={startDraftDrag('move')}
+                      onPointerMove={onDraftPointerMove}
+                      onPointerUp={onDraftPointerUp}
+                      onPointerCancel={onDraftPointerUp}
                     >
-                      <div className="px-1 py-0.5 text-[9px] leading-tight">
-                        <span className="font-medium" style={{ color: hex, filter: 'brightness(1.6)' }}>
-                          {ev.title}
-                        </span>
+                      <div className="flex h-full flex-col overflow-hidden px-1.5 py-1">
+                        <div className="truncate text-xs font-bold leading-tight" style={{ color: '#1c1b18' }}>
+                          <span className="font-mono">{fmtTime(draft.startMin)}</span>
+                          {draftLabel && <span className="ml-1">{draftLabel}</span>}
+                        </div>
+                      </div>
+                      <div
+                        className="absolute inset-x-0 -bottom-2.5 flex h-5 cursor-ns-resize touch-none items-center justify-center"
+                        onPointerDown={startDraftDrag('resize')}
+                        onPointerMove={onDraftPointerMove}
+                        onPointerUp={onDraftPointerUp}
+                        onPointerCancel={onDraftPointerUp}
+                      >
+                        <div className="h-1.5 w-6 rounded-full border" style={{ borderColor: draftHex, background: '#ffffff' }} />
                       </div>
                     </div>
                   );
-                })}
+                }
+                const ev = it.event!;
+                const hex = (ev.colorId && COLOR_HEX[ev.colorId]) || ev.calendarHex || DEFAULT_EVENT_HEX;
+                return (
+                  <button
+                    key={it.key}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onEventClick(ev);
+                    }}
+                    className="absolute overflow-hidden rounded-sm text-left"
+                    style={{
+                      top,
+                      height,
+                      left: `calc(${leftPct}% + 1px)`,
+                      width: `calc(${widthPct}% - 2px)`,
+                      background: `${hex}22`,
+                      borderLeft: `3px solid ${hex}`,
+                    }}
+                  >
+                    <div className="px-1.5 py-0.5 text-xs leading-tight">
+                      <span className="font-medium" style={{ color: hex, filter: 'brightness(0.85)' }}>
+                        {ev.title}
+                      </span>
+                    </div>
+                  </button>
+                );
+              })}
 
-                {dayIdx === todayIdx && (
-                  <div className="pointer-events-none absolute inset-x-0 z-30" style={{ top: minToPx(nowMin) }}>
-                    <div className="absolute inset-x-0 border-t-2 border-board-amber" />
-                    <div className="absolute -left-1 -top-[5px] h-2 w-2 rounded-full bg-board-amber animate-pulse-soft" />
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
+              {dayIdx === todayIdx && (
+                <div className="pointer-events-none absolute inset-x-0 z-30" style={{ top: minToPx(nowMin) }}>
+                  <div className="absolute inset-x-0 border-t-2 border-board-amber" />
+                  <div className="absolute -left-1 -top-[5px] h-2 w-2 rounded-full bg-board-amber animate-pulse-soft" />
+                </div>
+              )}
+            </div>
+          ))}
         </div>
       </div>
     </div>
