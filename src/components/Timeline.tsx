@@ -7,7 +7,9 @@ import { layoutColumns } from '../lib/layout';
 const HOUR_H = 64; // px per hour
 const GRID_H = 24 * HOUR_H;
 const LABEL_W = 52; // 時刻ラベル列の幅(px)
-const LONG_PRESS_MS = 450;
+const LONG_PRESS_MS = 450; // 空き枠から新規作成する長押し
+const MOVE_HOLD_MS = 220; // 既存予定を掴んで移動し始めるまでの保持時間
+const MIN_RESIZE_HEIGHT = 28; // これより低い予定はリサイズハンドルを出さない（詳細パネルで調整）
 const DAY_COUNT = 7;
 
 const minToPx = (min: number) => (min / 60) * HOUR_H;
@@ -21,6 +23,14 @@ interface LaidItem {
   end: number;
   event?: GEvent;
   isDraft?: boolean;
+  isDragGhost?: boolean;
+}
+
+interface DragOverride {
+  event: GEvent;
+  day: Date;
+  startMin: number;
+  endMin: number;
 }
 
 interface Props {
@@ -32,17 +42,33 @@ interface Props {
   onSlot: (day: Date, startMin: number, durMin: number) => void;
   onDraftChange: (d: Draft) => void;
   onEventClick: (ev: GEvent) => void;
+  onEventDragEnd: (ev: GEvent, day: Date, startMin: number, endMin: number) => void;
 }
 
-export default function Timeline({ days, events, draft, draftHex, draftLabel, onSlot, onDraftChange, onEventClick }: Props) {
+export default function Timeline({
+  days,
+  events,
+  draft,
+  draftHex,
+  draftLabel,
+  onSlot,
+  onDraftChange,
+  onEventClick,
+  onEventDragEnd,
+}: Props) {
   const gridRef = useRef<HTMLDivElement>(null);
   const columnsRef = useRef<HTMLDivElement>(null);
   const [nowMin, setNowMin] = useState(() => new Date().getHours() * 60 + new Date().getMinutes());
+  const [dragOverride, setDragOverride] = useState<DragOverride | null>(null);
 
   const press = useRef<{ y: number; moved: boolean; timer: number; fired: boolean; dayIdx: number } | null>(null);
   const drag = useRef<{ mode: 'move' | 'resize' } | null>(null);
   const draftRef = useRef(draft);
   draftRef.current = draft;
+
+  // 既存予定のドラッグ移動／リサイズ
+  const evPress = useRef<{ x: number; y: number; moved: boolean; timer: number } | null>(null);
+  const evDrag = useRef<{ event: GEvent; mode: 'move' | 'resize'; day: Date; startMin: number; endMin: number } | null>(null);
 
   useEffect(() => {
     const t = window.setInterval(() => {
@@ -73,7 +99,7 @@ export default function Timeline({ days, events, draft, draftHex, draftLabel, on
 
   // 列(日)ごとの空き枠タップ／長押し
   const columnPointerDown = (dayIdx: number) => (e: React.PointerEvent) => {
-    if (drag.current || e.button !== 0) return;
+    if (drag.current || evDrag.current || e.button !== 0) return;
     const rect = (e.currentTarget as Element).getBoundingClientRect();
     const m = clamp(pxToMin(e.clientY - rect.top), 0, 1440);
     const startSlot = clamp(Math.floor(m / 30) * 30, 0, 1440 - 60);
@@ -112,7 +138,7 @@ export default function Timeline({ days, events, draft, draftHex, draftLabel, on
     drag.current = null;
   };
 
-  // ドラフトの移動／リサイズは列コンテナ全体の座標から日・分を割り出す（列をまたいで移動できるように）
+  // 列コンテナ全体の座標から日・分を割り出す（列をまたいで移動できるように）
   const pointToDayMinute = (clientX: number, clientY: number) => {
     const rect = columnsRef.current!.getBoundingClientRect();
     const relX = clamp(clientX - rect.left, 0, rect.width - 0.01);
@@ -150,7 +176,85 @@ export default function Timeline({ days, events, draft, draftHex, draftLabel, on
     drag.current = null;
   };
 
+  // 既存予定：長押しで移動開始、下端ハンドルは即リサイズ開始
+  const cancelEvPress = () => {
+    if (evPress.current) {
+      window.clearTimeout(evPress.current.timer);
+      evPress.current = null;
+    }
+  };
+
+  const eventPointerDown = (ev: GEvent, day: Date, startMin: number, endMin: number) => (e: React.PointerEvent) => {
+    if (evDrag.current || drag.current || e.button !== 0) return;
+    e.stopPropagation();
+    (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
+    const timer = window.setTimeout(() => {
+      if (evPress.current && !evPress.current.moved) {
+        navigator.vibrate?.(15);
+        evDrag.current = { event: ev, mode: 'move', day, startMin, endMin };
+        setDragOverride({ event: ev, day, startMin, endMin });
+      }
+    }, MOVE_HOLD_MS);
+    evPress.current = { x: e.clientX, y: e.clientY, moved: false, timer };
+  };
+
+  const startEventResize = (ev: GEvent, day: Date, startMin: number, endMin: number) => (e: React.PointerEvent) => {
+    e.stopPropagation();
+    cancelEvPress();
+    (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
+    evDrag.current = { event: ev, mode: 'resize', day, startMin, endMin };
+    setDragOverride({ event: ev, day, startMin, endMin });
+  };
+
+  const eventPointerMove = (e: React.PointerEvent) => {
+    if (evPress.current && !evDrag.current) {
+      if (Math.abs(e.clientX - evPress.current.x) > 8 || Math.abs(e.clientY - evPress.current.y) > 8) {
+        evPress.current.moved = true;
+        window.clearTimeout(evPress.current.timer);
+      }
+      return;
+    }
+    if (!evDrag.current) return;
+    const d = evDrag.current;
+    const { dayIdx, minutes } = pointToDayMinute(e.clientX, e.clientY);
+    if (d.mode === 'move') {
+      const dur = d.endMin - d.startMin;
+      const s = clamp(snapTo(minutes, 15), 0, 1440 - dur);
+      const day = days[dayIdx] ?? d.day;
+      d.startMin = s;
+      d.endMin = s + dur;
+      d.day = day;
+    } else {
+      d.endMin = clamp(snapTo(minutes, 15), d.startMin + 15, 1440);
+    }
+    setDragOverride({ event: d.event, day: d.day, startMin: d.startMin, endMin: d.endMin });
+  };
+
+  const eventPointerUp = (ev: GEvent) => (e: React.PointerEvent) => {
+    e.stopPropagation();
+    if (evDrag.current) {
+      const d = evDrag.current;
+      evDrag.current = null;
+      setDragOverride(null);
+      cancelEvPress();
+      onEventDragEnd(d.event, d.day, d.startMin, d.endMin);
+      return;
+    }
+    if (evPress.current) {
+      const moved = evPress.current.moved;
+      cancelEvPress();
+      if (!moved) onEventClick(ev);
+    }
+  };
+
+  const eventPointerCancel = () => {
+    cancelEvPress();
+    evDrag.current = null;
+    setDragOverride(null);
+  };
+
   const draftDayIdx = draft ? days.findIndex((d) => isSameDay(d, draft.day)) : -1;
+  const dragOverrideDayIdx = dragOverride ? days.findIndex((d) => isSameDay(d, dragOverride.day)) : -1;
 
   const dayHex = (dayIdx: number, evs: GEvent[]) => {
     const items: LaidItem[] = evs.map((ev) => ({
@@ -162,6 +266,15 @@ export default function Timeline({ days, events, draft, draftHex, draftLabel, on
     if (dayIdx === draftDayIdx && draft) {
       items.push({ key: '__draft__', start: draft.startMin, end: draft.endMin, isDraft: true });
     }
+    if (dragOverride && dayIdx === dragOverrideDayIdx) {
+      items.push({
+        key: `__ghost__:${dragOverride.event.calendarId}:${dragOverride.event.id}`,
+        start: dragOverride.startMin,
+        end: dragOverride.endMin,
+        event: dragOverride.event,
+        isDragGhost: true,
+      });
+    }
     const pos = layoutColumns(items, (i) => i.start, (i) => Math.max(i.end, i.start + 20));
     return items.map((it) => ({ ...it, ...pos.get(it)! }));
   };
@@ -169,7 +282,7 @@ export default function Timeline({ days, events, draft, draftHex, draftLabel, on
   const eventsByDay = useMemo(
     () => days.map((day, idx) => dayHex(idx, events.filter((e) => isSameDay(e.start, day)))),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [events, days, draft],
+    [events, days, draft, dragOverride],
   );
 
   return (
@@ -226,6 +339,7 @@ export default function Timeline({ days, events, draft, draftHex, draftLabel, on
                 const height = Math.max(minToPx(it.end - it.start), 20);
                 const widthPct = 100 / it.cols;
                 const leftPct = (it.col * 100) / it.cols;
+
                 if (it.isDraft && draft) {
                   return (
                     <div
@@ -262,23 +376,59 @@ export default function Timeline({ days, events, draft, draftHex, draftLabel, on
                     </div>
                   );
                 }
+
+                if (it.isDragGhost) {
+                  const ev = it.event!;
+                  const hex = (ev.colorId && COLOR_HEX[ev.colorId]) || ev.calendarHex || DEFAULT_EVENT_HEX;
+                  return (
+                    <div
+                      key={it.key}
+                      className="pointer-events-none absolute z-20 overflow-hidden rounded-sm shadow-lg shadow-black/25"
+                      style={{
+                        top,
+                        height,
+                        left: `calc(${leftPct}% + 1px)`,
+                        width: `calc(${widthPct}% - 2px)`,
+                        background: `${hex}33`,
+                        border: `2px solid ${hex}`,
+                      }}
+                    >
+                      <div className="px-1.5 py-0.5 text-xs leading-tight">
+                        <span className="font-medium" style={{ color: hex, filter: 'brightness(0.85)' }}>
+                          {ev.title}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                }
+
                 const ev = it.event!;
                 const hex = (ev.colorId && COLOR_HEX[ev.colorId]) || ev.calendarHex || DEFAULT_EVENT_HEX;
+                const isBeingDragged =
+                  dragOverride && dragOverride.event.id === ev.id && dragOverride.event.calendarId === ev.calendarId;
                 return (
-                  <button
+                  <div
                     key={it.key}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onEventClick(ev);
+                    role="button"
+                    tabIndex={0}
+                    onPointerDown={eventPointerDown(ev, days[dayIdx], it.start, it.end)}
+                    onPointerMove={eventPointerMove}
+                    onPointerUp={eventPointerUp(ev)}
+                    onPointerCancel={eventPointerCancel}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') onEventClick(ev);
                     }}
-                    className="absolute overflow-hidden rounded-sm text-left"
+                    className={`absolute cursor-grab touch-none overflow-hidden rounded-sm text-left transition-opacity ${
+                      isBeingDragged ? 'opacity-30' : ''
+                    }`}
                     style={{
                       top,
                       height,
                       left: `calc(${leftPct}% + 1px)`,
                       width: `calc(${widthPct}% - 2px)`,
                       background: `${hex}22`,
-                      borderLeft: `3px solid ${hex}`,
+                      border: `1px solid ${hex}`,
+                      borderLeftWidth: '3px',
                     }}
                   >
                     <div className="px-1.5 py-0.5 text-xs leading-tight">
@@ -286,7 +436,16 @@ export default function Timeline({ days, events, draft, draftHex, draftLabel, on
                         {ev.title}
                       </span>
                     </div>
-                  </button>
+                    {height >= MIN_RESIZE_HEIGHT && (
+                      <div
+                        className="absolute inset-x-0 bottom-0 h-2 cursor-ns-resize touch-none"
+                        onPointerDown={startEventResize(ev, days[dayIdx], it.start, it.end)}
+                        onPointerMove={eventPointerMove}
+                        onPointerUp={eventPointerUp(ev)}
+                        onPointerCancel={eventPointerCancel}
+                      />
+                    )}
+                  </div>
                 );
               })}
 

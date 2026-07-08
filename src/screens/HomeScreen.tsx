@@ -260,6 +260,47 @@ export default function HomeScreen({ settings, onOpenSettings }: Props) {
     }
   };
 
+  // タイムライン上で既存予定をドラッグ移動／リサイズした結果を確定させる
+  const handleEventDragEnd = async (ev: GEvent, day: Date, startMin: number, endMin: number) => {
+    const originalStart = ev.start;
+    const originalEnd = ev.end;
+    const newStart = new Date(day.getTime() + startMin * 60_000);
+    const newEnd = new Date(day.getTime() + endMin * 60_000);
+    if (newStart.getTime() === originalStart.getTime() && newEnd.getTime() === originalEnd.getTime()) return;
+
+    // 楽観的にローカルへ反映
+    setEvents((prev) =>
+      prev.map((e) => (e.id === ev.id && e.calendarId === ev.calendarId ? { ...e, start: newStart, end: newEnd } : e)),
+    );
+    try {
+      const token = getValidToken() ?? (await connect(settings.clientId));
+      await updateEvent(token, ev.calendarId, ev.id, { start: newStart, end: newEnd, allDay: false });
+      setSnack({
+        message: '予定を移動しました',
+        actionLabel: '取り消す',
+        onAction: () => void undoEventMove(ev, originalStart, originalEnd),
+      });
+    } catch (err) {
+      // 失敗したら表示を元に戻す
+      setEvents((prev) =>
+        prev.map((e) => (e.id === ev.id && e.calendarId === ev.calendarId ? { ...e, start: originalStart, end: originalEnd } : e)),
+      );
+      setSnack({ message: err instanceof Error ? err.message : '移動に失敗しました' });
+    }
+  };
+
+  const undoEventMove = async (ev: GEvent, start: Date, end: Date) => {
+    setSnack(null);
+    try {
+      const token = getValidToken() ?? (await connect(settings.clientId));
+      await updateEvent(token, ev.calendarId, ev.id, { start, end, allDay: false });
+      setEvents((prev) => prev.map((e) => (e.id === ev.id && e.calendarId === ev.calendarId ? { ...e, start, end } : e)));
+      setSnack({ message: '元に戻しました' });
+    } catch (err) {
+      setSnack({ message: err instanceof Error ? err.message : '取り消しに失敗しました' });
+    }
+  };
+
   const draftHex = subCategory ? COLOR_HEX[subCategory.colorId] : '#a8570d';
   const thisWeek = todayInWeek(days);
 
@@ -359,6 +400,7 @@ export default function HomeScreen({ settings, onOpenSettings }: Props) {
           onSlot={handleSlot}
           onDraftChange={setDraft}
           onEventClick={setSelectedEvent}
+          onEventDragEnd={(ev, day, startMin, endMin) => void handleEventDragEnd(ev, day, startMin, endMin)}
         />
       </div>
       {/* シート分の余白確保（作成シートが画面下を覆っても続きが見えるように） */}
