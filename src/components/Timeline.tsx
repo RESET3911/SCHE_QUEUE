@@ -62,13 +62,15 @@ export default function Timeline({
   const [dragOverride, setDragOverride] = useState<DragOverride | null>(null);
 
   const press = useRef<{ y: number; moved: boolean; timer: number; fired: boolean; dayIdx: number } | null>(null);
-  const drag = useRef<{ mode: 'move' | 'resize' } | null>(null);
+  const drag = useRef<{ mode: 'move' | 'resize' | 'resize-top' } | null>(null);
   const draftRef = useRef(draft);
   draftRef.current = draft;
 
   // 既存予定のドラッグ移動／リサイズ
   const evPress = useRef<{ x: number; y: number; moved: boolean; timer: number } | null>(null);
-  const evDrag = useRef<{ event: GEvent; mode: 'move' | 'resize'; day: Date; startMin: number; endMin: number } | null>(null);
+  const evDrag = useRef<{ event: GEvent; mode: 'move' | 'resize' | 'resize-top'; day: Date; startMin: number; endMin: number } | null>(
+    null,
+  );
 
   useEffect(() => {
     const t = window.setInterval(() => {
@@ -147,7 +149,7 @@ export default function Timeline({
     return { dayIdx, minutes };
   };
 
-  const startDraftDrag = (mode: 'move' | 'resize') => (e: React.PointerEvent) => {
+  const startDraftDrag = (mode: 'move' | 'resize' | 'resize-top') => (e: React.PointerEvent) => {
     if (!draftRef.current) return;
     e.stopPropagation();
     cancelPress();
@@ -166,9 +168,12 @@ export default function Timeline({
       if (s !== d.startMin || day.getTime() !== d.day.getTime()) {
         onDraftChange({ ...d, day, startMin: s, endMin: s + dur });
       }
-    } else {
+    } else if (drag.current.mode === 'resize') {
       const end = clamp(snapTo(minutes, 15), d.startMin + 15, 1440);
       if (end !== d.endMin) onDraftChange({ ...d, endMin: end });
+    } else {
+      const start = clamp(snapTo(minutes, 15), 0, d.endMin - 15);
+      if (start !== d.startMin) onDraftChange({ ...d, startMin: start });
     }
   };
 
@@ -198,11 +203,13 @@ export default function Timeline({
     evPress.current = { x: e.clientX, y: e.clientY, moved: false, timer };
   };
 
-  const startEventResize = (ev: GEvent, day: Date, startMin: number, endMin: number) => (e: React.PointerEvent) => {
+  const startEventResize = (ev: GEvent, day: Date, startMin: number, endMin: number, edge: 'top' | 'bottom') => (
+    e: React.PointerEvent,
+  ) => {
     e.stopPropagation();
     cancelEvPress();
     (e.currentTarget as Element).setPointerCapture?.(e.pointerId);
-    evDrag.current = { event: ev, mode: 'resize', day, startMin, endMin };
+    evDrag.current = { event: ev, mode: edge === 'top' ? 'resize-top' : 'resize', day, startMin, endMin };
     setDragOverride({ event: ev, day, startMin, endMin });
   };
 
@@ -224,8 +231,10 @@ export default function Timeline({
       d.startMin = s;
       d.endMin = s + dur;
       d.day = day;
-    } else {
+    } else if (d.mode === 'resize') {
       d.endMin = clamp(snapTo(minutes, 15), d.startMin + 15, 1440);
+    } else {
+      d.startMin = clamp(snapTo(minutes, 15), 0, d.endMin - 15);
     }
     setDragOverride({ event: d.event, day: d.day, startMin: d.startMin, endMin: d.endMin });
   };
@@ -365,6 +374,15 @@ export default function Timeline({
                         </div>
                       </div>
                       <div
+                        className="absolute inset-x-0 -top-2.5 flex h-5 cursor-ns-resize touch-none items-center justify-center"
+                        onPointerDown={startDraftDrag('resize-top')}
+                        onPointerMove={onDraftPointerMove}
+                        onPointerUp={onDraftPointerUp}
+                        onPointerCancel={onDraftPointerUp}
+                      >
+                        <div className="h-1.5 w-6 rounded-full border" style={{ borderColor: draftHex, background: '#ffffff' }} />
+                      </div>
+                      <div
                         className="absolute inset-x-0 -bottom-2.5 flex h-5 cursor-ns-resize touch-none items-center justify-center"
                         onPointerDown={startDraftDrag('resize')}
                         onPointerMove={onDraftPointerMove}
@@ -437,13 +455,22 @@ export default function Timeline({
                       </span>
                     </div>
                     {height >= MIN_RESIZE_HEIGHT && (
-                      <div
-                        className="absolute inset-x-0 bottom-0 h-2 cursor-ns-resize touch-none"
-                        onPointerDown={startEventResize(ev, days[dayIdx], it.start, it.end)}
-                        onPointerMove={eventPointerMove}
-                        onPointerUp={eventPointerUp(ev)}
-                        onPointerCancel={eventPointerCancel}
-                      />
+                      <>
+                        <div
+                          className="absolute inset-x-0 top-0 h-2 cursor-ns-resize touch-none"
+                          onPointerDown={startEventResize(ev, days[dayIdx], it.start, it.end, 'top')}
+                          onPointerMove={eventPointerMove}
+                          onPointerUp={eventPointerUp(ev)}
+                          onPointerCancel={eventPointerCancel}
+                        />
+                        <div
+                          className="absolute inset-x-0 bottom-0 h-2 cursor-ns-resize touch-none"
+                          onPointerDown={startEventResize(ev, days[dayIdx], it.start, it.end, 'bottom')}
+                          onPointerMove={eventPointerMove}
+                          onPointerUp={eventPointerUp(ev)}
+                          onPointerCancel={eventPointerCancel}
+                        />
+                      </>
                     )}
                   </div>
                 );

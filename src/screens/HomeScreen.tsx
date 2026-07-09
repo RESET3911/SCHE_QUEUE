@@ -172,9 +172,7 @@ export default function HomeScreen({ settings, onOpenSettings }: Props) {
       const base = draft.day;
       const start = new Date(base.getTime() + draft.startMin * 60_000);
       const end = new Date(base.getTime() + draft.endMin * 60_000);
-      const summary = title.trim()
-        ? `${subCategory.prefix}${title.trim()}`
-        : subCategory.prefix || subCategory.name;
+      const summary = `${subCategory.prefix}${title.trim() || subCategory.name}`;
       const created = await insertEvent(token, calendarId, {
         summary,
         start,
